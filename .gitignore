@@ -1,0 +1,27 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local editor and OS files
+.idea/
+.DS_Store
+
+# Local plotting/cache directories
+.matplotlib/
+
+# Generated Bayesian model outputs
+*.pkl
+*.nc
+
+# CmdStan/CmdStanPy generated executables and temporary output
+/model_1_temperature
+/model_1_temperature_prior_predictive
+*.dSYM/
+*-diagnostic.csv
+*-output.csv
+
