@@ -21,7 +21,7 @@ transformed parameters {
 }
 
 model {
-  alpha ~ normal(log(0.85), 0.20);
+  alpha ~ normal(log(0.85), 0.3);
   beta_T ~ normal(0, 0.08);
   sigma ~ exponential(10);
   nu_minus_two ~ exponential(0.1);

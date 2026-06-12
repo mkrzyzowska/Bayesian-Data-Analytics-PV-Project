@@ -14,7 +14,7 @@ generated quantities {
   vector[N] y_prior;
   vector[N] PR_prior;
 
-  alpha = normal_rng(log(0.85), 0.20); // zakłada że sprawność przy 25 stopniach wynosi średnio 85% z odchyleniem 20%
+  alpha = normal_rng(log(0.85), 0.3); // zakłada że sprawność przy 25 stopniach wynosi średnio 50% z odchyleniem 20%
   beta_T = normal_rng(0, 0.08);
   sigma = exponential_rng(10);
   nu = 2 + exponential_rng(0.1);
