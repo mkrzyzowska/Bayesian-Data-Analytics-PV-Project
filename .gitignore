@@ -25,3 +25,8 @@ __pycache__/
 *-diagnostic.csv
 *-output.csv
 
+/model_1_temperature_studentt_prior_predictive
+/model_1_temperature_studentt
+/model_2_temperature_daily_offset
+/model_2_temperature_daily_offset_prior_predictive
+/opis.md
