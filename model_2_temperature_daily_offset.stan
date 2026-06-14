@@ -27,7 +27,7 @@ transformed parameters {
 }
 
 model {
-  alpha ~ normal(log(0.90), 0.12);
+  alpha ~ normal(log(0.5), 0.3);
   beta_T ~ normal(0, 0.04);
   sigma ~ normal(0, 0.05);
   sigma_day ~ normal(0, 0.03);

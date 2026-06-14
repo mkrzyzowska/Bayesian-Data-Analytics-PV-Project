@@ -19,7 +19,7 @@ generated quantities {
   vector[N] y_prior;
   vector[N] PR_prior;
 
-  alpha = normal_rng(log(0.90), 0.12);
+  alpha = normal_rng(log(0.5), 0.3);
   beta_T = normal_rng(0, 0.04);
 
   // Controlled prior predictive scales. This avoids rare absurd PR values.
