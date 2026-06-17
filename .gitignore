@@ -19,14 +19,14 @@ __pycache__/
 *.nc
 
 # CmdStan/CmdStanPy generated executables and temporary output
-/model_1_temperature
-/model_1_temperature_prior_predictive
+/legacy_models/model_1_temperature
+/legacy_models/model_1_temperature_prior_predictive
 *.dSYM/
 *-diagnostic.csv
 *-output.csv
 
 /model_1_temperature_studentt_prior_predictive
-/model_1_temperature_studentt
+/legacy_models/model_1_temperature_studentt
 /model_2_temperature_daily_offset
 /model_2_temperature_daily_offset_prior_predictive
 /opis.md
