@@ -3,12 +3,13 @@ data {
   int<lower=1> J;
   vector[N] y;
   vector[N] x_T;
+  real<lower=0> temp_range;
   array[N] int<lower=1, upper=J> day_id;
 }
 
 parameters {
   real alpha;
-  real beta_T;
+  real beta_T_per_10C;
   real<lower=0.001, upper=0.15> sigma;
   real<lower=0.000, upper=0.10> sigma_day;
   real<lower=5, upper=50> nu;
@@ -16,9 +17,11 @@ parameters {
 }
 
 transformed parameters {
+  real beta_T;
   vector[J] delta_day;
   vector[N] mu;
 
+  beta_T = beta_T_per_10C * temp_range / 10;
   delta_day = sigma_day * (z_day_raw - mean(z_day_raw));
 
   for (i in 1:N) {
@@ -27,8 +30,8 @@ transformed parameters {
 }
 
 model {
-  alpha ~ normal(log(0.5), 0.3);
-  beta_T ~ normal(0, 0.04);
+  alpha ~ normal(log(0.75), 0.3);
+  beta_T_per_10C ~ normal(-0.05, 0.5);
   sigma ~ normal(0, 0.05);
   sigma_day ~ normal(0, 0.03);
   nu ~ normal(15, 10);

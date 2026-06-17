@@ -2,6 +2,7 @@ data {
   int<lower=1> N;
   int<lower=1> J;
   vector[N] x_T;
+  real<lower=0> temp_range;
   array[N] int<lower=1, upper=J> day_id;
 }
 
@@ -11,6 +12,7 @@ generated quantities {
   real sigma;
   real sigma_day;
   real nu;
+  real beta_T_per_10C;
 
   vector[J] z_day_raw;
   vector[J] delta_day;
@@ -19,8 +21,9 @@ generated quantities {
   vector[N] y_prior;
   vector[N] PR_prior;
 
-  alpha = normal_rng(log(0.5), 0.3);
-  beta_T = normal_rng(0, 0.04);
+  alpha = normal_rng(log(0.75), 0.3);
+  beta_T_per_10C = normal_rng(-0.05, 0.5);
+  beta_T = beta_T_per_10C * temp_range / 10;
 
   // Controlled prior predictive scales. This avoids rare absurd PR values.
   sigma = uniform_rng(0.005, 0.12);
