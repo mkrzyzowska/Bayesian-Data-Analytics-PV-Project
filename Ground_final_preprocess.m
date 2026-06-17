@@ -2,37 +2,53 @@ clear; clc; close all;
 
 %% USER SETTINGS
 
-% Folder z danymi:
-% aktualny folder:
-% ├── Ground_Data_Preprocess.m
-% └── 2016/
-%     ├── 06/
-%     ├── 07/
-%     └── 08/
 baseDir = fullfile(pwd, "onemin-Ground-2016/2016");
 
 monthFolders = ["06", "07", "08"];
-
-% Pattern dla Ground Mount
 filePattern = "onemin-Ground-2016-*.csv";
 
 % Ground Mount rated DC power [kW]
-% NIST Ground Mount Array: około 271 kW DC
 P_rated_kW = 271;
 
-% Reference irradiance
-G_STC = 1000; % W/m^2
+% Reference irradiance [W/m^2]
+G_STC = 1000;
 
-% Filtering settings
-minIrradiance = 700;      % W/m^2
-maxIrradianceChange = 30; % W/m^2 per minute
-minHour = 11;
-maxHour = 14;
+%% Dataset construction settings
 
-minPR = 0.75;
-maxPR = 1.15;
+% Dataset 1/2: direct irradiance threshold
+minIrradianceForPR = 50; % W/m^2
 
-% Column names in CSV
+% Dataset 3/4: daylight window inferred from array irradiance
+% For each day: first and last timestamp where G_POA > this threshold.
+sunWindowIrradianceThreshold = 50; % W/m^2
+
+% Optional additional margin after sunrise / before sunset.
+% Set to 0 because the threshold itself already removes actual night.
+sunWindowMarginMinutes = 0;
+
+% 5-minute sampling
+sampleEveryMinutes = 5;
+
+%% Loose physical plausibility limits
+% These are only sensor-failure filters, not modelling filters.
+
+minIrradiancePhysical = -20;       % W/m^2
+maxIrradiancePhysical = 1500;      % W/m^2
+
+minPowerPhysical = -5;             % kW
+maxPowerPhysical = 1.5 * P_rated_kW;
+
+minTmodulePhysical = -40;          % degC
+maxTmodulePhysical = 100;          % degC
+
+minTambPhysical = -40;             % degC
+maxTambPhysical = 60;              % degC
+
+minWindPhysical = -1;              % m/s
+maxWindPhysical = 60;              % m/s
+
+%% Column names in CSV
+
 timestampCol = "TIMESTAMP";
 PdcCol       = "InvPDC_kW_Avg";
 GpoaCol      = "SEWSPOAIrrad_Wm2_Avg";
@@ -74,7 +90,6 @@ for k = 1:numel(files)
 
     T = readtable(filePath, opts);
 
-    % Check required columns
     availableCols = string(T.Properties.VariableNames);
     requiredCols = [timestampCol, PdcCol, GpoaCol, TmoduleCol, TambCol, windCol];
 
@@ -86,7 +101,6 @@ for k = 1:numel(files)
         error("Some required columns are missing.");
     end
 
-    % Convert columns
     timestamp  = parseTimestamp(T.(timestampCol));
     P_DC_kW    = toNumeric(T.(PdcCol));
     G_POA_Wm2  = toNumeric(T.(GpoaCol));
@@ -104,17 +118,19 @@ fprintf("Raw rows: %d\n", height(allData));
 
 %% BASIC CLEANING
 
-allData = sortrows(allData, 'timestamp');
+allData = sortrows(allData, "timestamp");
 
 % Remove duplicate timestamps
 [~, ia] = unique(allData.timestamp);
 allData = allData(ia, :);
 
-% Remove missing values
+% Remove missing values in required measurement columns
 requiredVars = ["timestamp", "P_DC_kW", "G_POA_Wm2", ...
                 "T_module_C", "T_amb_C", "wind_ms"];
 
 allData = rmmissing(allData, "DataVariables", requiredVars);
+
+fprintf("Rows after removing missing values: %d\n", height(allData));
 
 %% ADD TIME VARIABLES
 
@@ -122,172 +138,202 @@ allData.hour = hour(allData.timestamp) + minute(allData.timestamp)/60;
 allData.month = month(allData.timestamp);
 allData.day = dateshift(allData.timestamp, "start", "day");
 
-%% COMPUTE IRRADIANCE CHANGE
+%% FILTER ONLY OBVIOUSLY BROKEN MEASUREMENTS
 
-allData.dG_POA = [NaN; abs(diff(allData.G_POA_Wm2))];
+validPhysical = ...
+    allData.G_POA_Wm2  >= minIrradiancePhysical & ...
+    allData.G_POA_Wm2  <= maxIrradiancePhysical & ...
+    allData.P_DC_kW    >= minPowerPhysical & ...
+    allData.P_DC_kW    <= maxPowerPhysical & ...
+    allData.T_module_C >= minTmodulePhysical & ...
+    allData.T_module_C <= maxTmodulePhysical & ...
+    allData.T_amb_C    >= minTambPhysical & ...
+    allData.T_amb_C    <= maxTambPhysical & ...
+    allData.wind_ms    >= minWindPhysical & ...
+    allData.wind_ms    <= maxWindPhysical;
 
-% Do not compare last sample of one day with first sample of next day
-newDay = [true; allData.day(2:end) ~= allData.day(1:end-1)];
-allData.dG_POA(newDay) = NaN;
+fprintf("Removed physically broken rows: %d\n", height(allData) - sum(validPhysical));
 
-%% FILTER DATA
+cleanBase = allData(validPhysical, :);
 
-clean = allData;
+fprintf("Rows after physical plausibility filtering: %d\n", height(cleanBase));
 
-% High irradiance only
-clean = clean(clean.G_POA_Wm2 > minIrradiance, :);
+%% ADD PR, logPR AND PREDICTORS
 
-% Positive DC power only
-clean = clean(clean.P_DC_kW > 0, :);
+cleanBase = addPrAndPredictors(cleanBase, P_rated_kW, G_STC);
 
-% Near solar noon only
-clean = clean(clean.hour >= minHour & clean.hour <= maxHour, :);
+%% CREATE 4 DATASETS
 
-% Remove unstable irradiance / cloudy transients
-clean = clean(clean.dG_POA < maxIrradianceChange, :);
+% Dataset 1: irradiance > 50 W/m^2, all available 1-minute samples
+maskIrr50 = cleanBase.G_POA_Wm2 > minIrradianceForPR;
+data_irr50_all = makeModelDataset(cleanBase(maskIrr50, :));
 
-%% COMPUTE PERFORMANCE RATIO
+% Dataset 2: irradiance > 50 W/m^2, 5-minute samples
+mask5min = mod(minute(cleanBase.timestamp), sampleEveryMinutes) == 0;
+data_irr50_5min = makeModelDataset(cleanBase(maskIrr50 & mask5min, :));
 
-clean.expected_P_DC_kW = P_rated_kW .* clean.G_POA_Wm2 ./ G_STC;
+% Dataset 3: sun-window per day, all available 1-minute samples
+maskSunWindow = makeSunWindowMask( ...
+    cleanBase, ...
+    sunWindowIrradianceThreshold, ...
+    sunWindowMarginMinutes);
 
-clean.PR = clean.P_DC_kW ./ clean.expected_P_DC_kW;
+data_sunwindow_all = makeModelDataset(cleanBase(maskSunWindow, :));
 
-% Remove suspicious PR values
-clean = clean(clean.PR > minPR & clean.PR < maxPR, :);
-
-% Response variable for Bayesian model
-clean.logPR = log(clean.PR);
-
-% Scaled predictors
-clean.x_T = (clean.T_module_C - 25) ./ 10; % +1 means +10 degC
-
-clean.z_wind = (clean.wind_ms - mean(clean.wind_ms, "omitnan")) ./ ...
-                std(clean.wind_ms, "omitnan");
-
-clean.z_Tamb = (clean.T_amb_C - mean(clean.T_amb_C, "omitnan")) ./ ...
-                std(clean.T_amb_C, "omitnan");
-
-% Additional variable, same as PR but clearer name for plots
-clean.power_ratio = clean.P_DC_kW ./ clean.expected_P_DC_kW;
-
-fprintf("Clean rows: %d\n", height(clean));
-
-%% SUMMARY
-
-fprintf("\nPR summary:\n");
-fprintf("mean PR = %.4f\n", mean(clean.PR, "omitnan"));
-fprintf("std  PR = %.4f\n", std(clean.PR, "omitnan"));
-fprintf("min  PR = %.4f\n", min(clean.PR));
-fprintf("max  PR = %.4f\n", max(clean.PR));
-
-fprintf("\nTemperature summary:\n");
-fprintf("min Tmodule = %.2f degC\n", min(clean.T_module_C));
-fprintf("max Tmodule = %.2f degC\n", max(clean.T_module_C));
-
-fprintf("\nSamples per month:\n");
-[Gm, months] = findgroups(clean.month);
-counts = splitapply(@numel, clean.PR, Gm);
-disp(table(months, counts));
-
-%% DIAGNOSTIC PLOTS
-
-% 1. Distribution of PR
-figure;
-histogram(clean.PR, 80);
-xlabel("Performance ratio PR");
-ylabel("Count");
-title("Distribution of PR");
-grid on;
-
-% 2. PR vs module temperature
-figure;
-scatter(clean.T_module_C, clean.PR, 8, "filled"); hold on;
-p = polyfit(clean.T_module_C, clean.PR, 1);
-xfit = linspace(min(clean.T_module_C), max(clean.T_module_C), 100);
-yfit = polyval(p, xfit);
-plot(xfit, yfit, "LineWidth", 2);
-xlabel("Module temperature [degC]");
-ylabel("PR");
-title("PR vs module temperature");
-grid on;
-
-% 3. DC power vs POA irradiance
-figure;
-scatter(clean.G_POA_Wm2, clean.P_DC_kW, 8, "filled");
-xlabel("POA irradiance [W/m^2]");
-ylabel("DC power [kW]");
-title("DC power vs POA irradiance");
-grid on;
-
-% 4. PR vs wind speed
-figure;
-scatter(clean.wind_ms, clean.PR, 8, "filled"); hold on;
-p = polyfit(clean.wind_ms, clean.PR, 1);
-xfit = linspace(min(clean.wind_ms), max(clean.wind_ms), 100);
-yfit = polyval(p, xfit);
-plot(xfit, yfit, "LineWidth", 2);
-xlabel("Wind speed [m/s]");
-ylabel("PR");
-title("PR vs wind speed");
-grid on;
-
-% 5. Module temperature vs wind speed
-figure;
-scatter(clean.wind_ms, clean.T_module_C, 8, "filled"); hold on;
-p = polyfit(clean.wind_ms, clean.T_module_C, 1);
-xfit = linspace(min(clean.wind_ms), max(clean.wind_ms), 100);
-yfit = polyval(p, xfit);
-plot(xfit, yfit, "LineWidth", 2);
-xlabel("Wind speed [m/s]");
-ylabel("Module temperature [degC]");
-title("Module temperature vs wind speed");
-grid on;
-
-% 6. PR over time
-figure;
-plot(clean.timestamp, clean.PR, ".");
-xlabel("Time");
-ylabel("PR");
-title("PR over time");
-grid on;
-
-% 7. PR by month
-figure;
-boxchart(clean.month, clean.PR);
-xlabel("Month");
-ylabel("PR");
-title("PR by month");
-grid on;
-
-% 8. PR vs hour of day
-figure;
-scatter(clean.hour, clean.PR, 8, "filled");
-xlabel("Hour of day");
-ylabel("PR");
-title("PR vs hour of day");
-grid on;
+% Dataset 4: sun-window per day, 5-minute samples
+data_sunwindow_5min = makeModelDataset(cleanBase(maskSunWindow & mask5min, :));
 
 %% SAVE DATASETS
 
-% Full cleaned dataset for EDA
-cleanOutFile = fullfile(baseDir, "clean_ground_2016_summer.csv");
-writetable(clean, cleanOutFile);
+out1 = fullfile(baseDir, "ground_model_data_irr50_all.csv");
+out2 = fullfile(baseDir, "ground_model_data_irr50_5min.csv");
+out3 = fullfile(baseDir, "ground_model_data_sunwindow_all.csv");
+out4 = fullfile(baseDir, "ground_model_data_sunwindow_5min.csv");
 
-fprintf("\nSaved full clean dataset to:\n%s\n", cleanOutFile);
+writetable(data_irr50_all, out1);
+writetable(data_irr50_5min, out2);
+writetable(data_sunwindow_all, out3);
+writetable(data_sunwindow_5min, out4);
 
-% Smaller dataset for Bayesian modelling
-modelData = clean(:, ["timestamp", "day", "month", "hour", ...
-                      "logPR", "PR", "x_T", "z_wind", ...
-                      "T_module_C", "wind_ms", ...
+fprintf("\nSaved files:\n");
+fprintf("1) %s\n", out1);
+fprintf("2) %s\n", out2);
+fprintf("3) %s\n", out3);
+fprintf("4) %s\n", out4);
+
+%% PRINT SUMMARY
+
+printDatasetSummary("irr50 all", data_irr50_all);
+printDatasetSummary("irr50 5min", data_irr50_5min);
+printDatasetSummary("sunwindow all", data_sunwindow_all);
+printDatasetSummary("sunwindow 5min", data_sunwindow_5min);
+
+%% QUICK DIAGNOSTIC PLOTS
+
+figure;
+histogram(data_irr50_all.PR, 100);
+xlabel("PR");
+ylabel("Count");
+title("PR distribution: irradiance > 50 W/m^2, all samples");
+grid on;
+
+figure;
+histogram(data_sunwindow_all.PR, 100);
+xlabel("PR");
+ylabel("Count");
+title("PR distribution: sun-window, all samples");
+grid on;
+
+figure;
+scatter(data_irr50_all.T_module_C, data_irr50_all.PR, 8, "filled");
+xlabel("Module temperature [degC]");
+ylabel("PR");
+title("PR vs module temperature: irradiance > 50 W/m^2");
+grid on;
+
+figure;
+scatter(data_sunwindow_all.T_module_C, data_sunwindow_all.PR, 8, "filled");
+xlabel("Module temperature [degC]");
+ylabel("PR");
+title("PR vs module temperature: sun-window");
+grid on;
+
+%% LOCAL FUNCTIONS
+
+function T = addPrAndPredictors(T, P_rated_kW, G_STC)
+
+    T.expected_P_DC_kW = P_rated_kW .* T.G_POA_Wm2 ./ G_STC;
+
+    T.PR = T.P_DC_kW ./ T.expected_P_DC_kW;
+
+    % logPR is only defined for positive PR.
+    % Rows with nonpositive PR are removed later in makeModelDataset().
+    T.logPR = NaN(height(T), 1);
+    validLog = isfinite(T.PR) & T.PR > 0;
+    T.logPR(validLog) = log(T.PR(validLog));
+
+    T.x_T = (T.T_module_C - 25) ./ 10;
+
+    T.z_wind = (T.wind_ms - mean(T.wind_ms, "omitnan")) ./ ...
+                std(T.wind_ms, "omitnan");
+
+    T.z_Tamb = (T.T_amb_C - mean(T.T_amb_C, "omitnan")) ./ ...
+                std(T.T_amb_C, "omitnan");
+
+    T.power_ratio = T.PR;
+
+end
+
+function modelData = makeModelDataset(T)
+
+    % Keep only rows usable by the Bayesian model.
+    % This is not arbitrary filtering; log(PR) mathematically requires PR > 0.
+    modelRows = ...
+        isfinite(T.logPR) & ...
+        isfinite(T.PR) & ...
+        T.PR > 0 & ...
+        isfinite(T.x_T) & ...
+        isfinite(T.T_module_C);
+
+    T = T(modelRows, :);
+
+    % Recompute day_id so Stan gets consecutive integers: 1, 2, ..., J
+    [~, ~, T.day_id] = unique(T.day);
+
+    modelData = T(:, ["timestamp", "day", "day_id", ...
+                      "month", "hour", ...
+                      "logPR", "PR", "x_T", "z_wind", "z_Tamb", ...
+                      "T_module_C", "T_amb_C", "wind_ms", ...
                       "G_POA_Wm2", "P_DC_kW", ...
                       "expected_P_DC_kW", "power_ratio"]);
 
-modelOutFile = fullfile(baseDir, "ground_model_data.csv");
-writetable(modelData, modelOutFile);
+end
 
-fprintf("\nSaved model dataset to:\n%s\n", modelOutFile);
+function mask = makeSunWindowMask(T, irradianceThreshold, marginMinutes)
 
-%% LOCAL FUNCTIONS
+    mask = false(height(T), 1);
+
+    days = unique(T.day);
+
+    for d = 1:numel(days)
+
+        idxDay = find(T.day == days(d));
+
+        idxSun = idxDay(T.G_POA_Wm2(idxDay) > irradianceThreshold);
+
+        if numel(idxSun) < 2
+            continue;
+        end
+
+        tStart = min(T.timestamp(idxSun)) + minutes(marginMinutes);
+        tEnd   = max(T.timestamp(idxSun)) - minutes(marginMinutes);
+
+        mask(idxDay) = T.timestamp(idxDay) >= tStart & ...
+                       T.timestamp(idxDay) <= tEnd;
+    end
+
+end
+
+function printDatasetSummary(name, T)
+
+    fprintf("\n--- %s ---\n", name);
+    fprintf("Rows: %d\n", height(T));
+
+    if height(T) == 0
+        return;
+    end
+
+    fprintf("Days: %d\n", numel(unique(T.day_id)));
+    fprintf("G_POA min/median/max: %.2f / %.2f / %.2f W/m^2\n", ...
+        min(T.G_POA_Wm2), median(T.G_POA_Wm2), max(T.G_POA_Wm2));
+
+    fprintf("PR min/median/max: %.4f / %.4f / %.4f\n", ...
+        min(T.PR), median(T.PR), max(T.PR));
+
+    fprintf("logPR min/median/max: %.4f / %.4f / %.4f\n", ...
+        min(T.logPR), median(T.logPR), max(T.logPR));
+
+end
 
 function t = parseTimestamp(x)
 
@@ -298,8 +344,6 @@ function t = parseTimestamp(x)
 
     x = string(x);
     x = strtrim(x);
-
-    % Remove quotes if present
     x = erase(x, '"');
 
     % Remove timezone suffix, e.g. -05:00 or +02:00
@@ -322,7 +366,6 @@ function y = toNumeric(x)
     x = strtrim(x);
     x = erase(x, '"');
 
-    % Convert empty / invalid text fields to NaN
     x(x == "" | lower(x) == "nan" | lower(x) == "null") = "NaN";
 
     y = str2double(x);
