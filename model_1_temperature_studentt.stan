@@ -22,7 +22,7 @@ transformed parameters {
 
 model {
   alpha ~ normal(log(0.75), 0.3);
-  beta_T_per_10C ~ normal(-0.05, 0.5);
+  beta_T_per_10C ~ normal(0, 0.5);
   sigma ~ normal(0, 0.05);
   nu ~ normal(15, 10);
 

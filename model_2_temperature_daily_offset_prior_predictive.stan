@@ -22,7 +22,7 @@ generated quantities {
   vector[N] PR_prior;
 
   alpha = normal_rng(log(0.75), 0.3);
-  beta_T_per_10C = normal_rng(-0.05, 0.5);
+  beta_T_per_10C = normal_rng(0, 0.5);
   beta_T = beta_T_per_10C * temp_range / 10;
 
   // Controlled prior predictive scales. This avoids rare absurd PR values.
