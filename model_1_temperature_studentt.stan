@@ -1,42 +1,67 @@
 data {
   int<lower=1> N;
-  vector[N] y;
-  vector[N] x_T;
-  real<lower=0> temp_range;
+  vector[N] y;                // log(PR)
+  vector[N] x_T;              // normalized module temperature in [0, 1]
+  real<lower=0> T_range_C;    // T_max - T_min in degC
 }
 
 parameters {
   real alpha;
-  real beta_T_per_10C;
+
+  // Interpretable coefficient:
+  // effect on log(PR) for +10 degC module temperature increase
+  real beta_T_10C;
+
   real<lower=0.001, upper=0.15> sigma;
   real<lower=5, upper=50> nu;
 }
 
 transformed parameters {
-  real beta_T;
+  real beta_T_norm;
   vector[N] mu;
 
-  beta_T = beta_T_per_10C * temp_range / 10;
-  mu = alpha + beta_T * x_T;
+  // Convert +10 degC coefficient to coefficient for x_T in [0, 1]
+  // If x_T changes from 0 to 1, temperature changes by T_range_C.
+  beta_T_norm = beta_T_10C * T_range_C / 10.0;
+
+  mu = alpha + beta_T_norm * x_T;
 }
 
 model {
-  alpha ~ normal(log(0.75), 0.3);
-  beta_T_per_10C ~ normal(0, 0.5);
-  sigma ~ normal(0, 0.05);
+  // Baseline log(PR) at the lowest module temperature in the dataset.
+  // Broad weakly informative prior.
+  alpha ~ normal(log(0.95), 0.25);
+
+  // Temperature effect per +10 degC.
+  // Weakly informative and centered at zero.
+  // This avoids forcing the expected negative PV temperature effect.
+  beta_T_10C ~ normal(0, 0.10);
+
+  // Residual noise on log(PR).
+  sigma ~ normal(0, 0.08);
+
+  // Student-t degrees of freedom.
   nu ~ normal(15, 10);
 
   y ~ student_t(nu, mu, sigma);
 }
-
 generated quantities {
   vector[N] y_pred;
   vector[N] PR_pred;
   vector[N] log_lik;
 
+  real effect_10C_pct;
+  real effect_1C_pct;
+  real effect_full_range_pct;
+
+  effect_10C_pct = 100 * (exp(beta_T_10C) - 1);
+  effect_1C_pct = 100 * (exp(beta_T_10C / 10.0) - 1);
+  effect_full_range_pct = 100 * (exp(beta_T_norm) - 1);
+
   for (i in 1:N) {
     y_pred[i] = student_t_rng(nu, mu[i], sigma);
     PR_pred[i] = exp(y_pred[i]);
+
     log_lik[i] = student_t_lpdf(y[i] | nu, mu[i], sigma);
   }
 }

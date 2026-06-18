@@ -1,36 +1,52 @@
 data {
   int<lower=1> N;
-  vector[N] x_T;
-  real<lower=0> temp_range;
-}
-
-parameters {
-  real alpha;
-  real beta_T_per_10C;
-  real<lower=0.001, upper=0.15> sigma;
-  real<lower=5, upper=50> nu;
-}
-
-transformed parameters {
-  real beta_T;
-  vector[N] mu;
-
-  beta_T = beta_T_per_10C * temp_range / 10;
-  mu = alpha + beta_T * x_T;
-}
-
-model {
-  alpha ~ normal(log(0.75), 0.3);
-  beta_T_per_10C ~ normal(0, 0.5);
-  sigma ~ normal(0, 0.05);
-  nu ~ normal(15, 10);
+  vector[N] x_T;              // normalized module temperature in [0, 1]
+  real<lower=0> T_range_C;    // T_max - T_min in degC
 }
 
 generated quantities {
+  real alpha;
+  real beta_T_10C;
+  real beta_T_norm;
+
+  real sigma;
+  real nu;
+
+  real effect_10C_pct;
+  real effect_1C_pct;
+  real effect_full_range_pct;
+
+  vector[N] mu;
   vector[N] y_prior;
   vector[N] PR_prior;
 
+  alpha = normal_rng(log(0.95), 0.25);
+
+  // Prior directly interpretable as effect per +10 degC
+  beta_T_10C = normal_rng(0, 0.1);
+
+  // Convert to coefficient for x_T in [0, 1]
+  beta_T_norm = beta_T_10C * T_range_C / 10.0;
+
+  // Prior predictive version of bounded sigma
+  sigma = normal_rng(0, 0.08);
+  while (sigma <= 0.001 || sigma >= 0.15) {
+    sigma = normal_rng(0, 0.08);
+  }
+
+  // Prior predictive version of bounded nu
+  nu = normal_rng(15, 10);
+  while (nu <= 5 || nu >= 50) {
+    nu = normal_rng(15, 10);
+  }
+
+  effect_10C_pct = 100 * (exp(beta_T_10C) - 1);
+  effect_1C_pct = 100 * (exp(beta_T_10C / 10.0) - 1);
+  effect_full_range_pct = 100 * (exp(beta_T_norm) - 1);
+
   for (i in 1:N) {
+    mu[i] = alpha + beta_T_norm * x_T[i];
+
     y_prior[i] = student_t_rng(nu, mu[i], sigma);
     PR_prior[i] = exp(y_prior[i]);
   }

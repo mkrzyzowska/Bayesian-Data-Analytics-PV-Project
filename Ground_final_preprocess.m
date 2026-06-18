@@ -187,26 +187,26 @@ data_sunwindow_5min = makeModelDataset(cleanBase(maskSunWindow & mask5min, :));
 
 out1 = fullfile(baseDir, "ground_model_data_irr50_all.csv");
 out2 = fullfile(baseDir, "ground_model_data_irr50_5min.csv");
-out3 = fullfile(baseDir, "ground_model_data_sunwindow_all.csv");
-out4 = fullfile(baseDir, "ground_model_data_sunwindow_5min.csv");
+% out3 = fullfile(baseDir, "ground_model_data_sunwindow_all.csv");
+% out4 = fullfile(baseDir, "ground_model_data_sunwindow_5min.csv");
 
 writetable(data_irr50_all, out1);
 writetable(data_irr50_5min, out2);
-writetable(data_sunwindow_all, out3);
-writetable(data_sunwindow_5min, out4);
+% writetable(data_sunwindow_all, out3);
+% writetable(data_sunwindow_5min, out4);
 
 fprintf("\nSaved files:\n");
 fprintf("1) %s\n", out1);
 fprintf("2) %s\n", out2);
-fprintf("3) %s\n", out3);
-fprintf("4) %s\n", out4);
+% fprintf("3) %s\n", out3);
+% fprintf("4) %s\n", out4);
 
 %% PRINT SUMMARY
 
 printDatasetSummary("irr50 all", data_irr50_all);
 printDatasetSummary("irr50 5min", data_irr50_5min);
-printDatasetSummary("sunwindow all", data_sunwindow_all);
-printDatasetSummary("sunwindow 5min", data_sunwindow_5min);
+% printDatasetSummary("sunwindow all", data_sunwindow_all);
+% printDatasetSummary("sunwindow 5min", data_sunwindow_5min);
 
 %% QUICK DIAGNOSTIC PLOTS
 
@@ -217,12 +217,12 @@ ylabel("Count");
 title("PR distribution: irradiance > 50 W/m^2, all samples");
 grid on;
 
-figure;
-histogram(data_sunwindow_all.PR, 100);
-xlabel("PR");
-ylabel("Count");
-title("PR distribution: sun-window, all samples");
-grid on;
+% figure;
+% histogram(data_sunwindow_all.PR, 100);
+% xlabel("PR");
+% ylabel("Count");
+% title("PR distribution: sun-window, all samples");
+% grid on;
 
 figure;
 scatter(data_irr50_all.T_module_C, data_irr50_all.PR, 8, "filled");
@@ -231,12 +231,12 @@ ylabel("PR");
 title("PR vs module temperature: irradiance > 50 W/m^2");
 grid on;
 
-figure;
-scatter(data_sunwindow_all.T_module_C, data_sunwindow_all.PR, 8, "filled");
-xlabel("Module temperature [degC]");
-ylabel("PR");
-title("PR vs module temperature: sun-window");
-grid on;
+% figure;
+% scatter(data_sunwindow_all.T_module_C, data_sunwindow_all.PR, 8, "filled");
+% xlabel("Module temperature [degC]");
+% ylabel("PR");
+% title("PR vs module temperature: sun-window");
+% grid on;
 
 %% LOCAL FUNCTIONS
 
@@ -246,13 +246,47 @@ function T = addPrAndPredictors(T, P_rated_kW, G_STC)
 
     T.PR = T.P_DC_kW ./ T.expected_P_DC_kW;
 
-    % logPR is only defined for positive PR.
-    % Rows with nonpositive PR are removed later in makeModelDataset().
     T.logPR = NaN(height(T), 1);
     validLog = isfinite(T.PR) & T.PR > 0;
     T.logPR(validLog) = log(T.PR(validLog));
 
-    T.x_T = (T.T_module_C - 25) ./ 10;
+    T.power_ratio = T.PR;
+
+end
+
+
+function modelData = makeModelDataset(T)
+
+    % Keep only rows usable by the Bayesian model
+    modelRows = ...
+        isfinite(T.logPR) & ...
+        isfinite(T.PR) & ...
+        T.PR > 0 & ...
+        isfinite(T.T_module_C);
+
+    T = T(modelRows, :);
+
+    % Min-max normalization of module temperature to [0, 1]
+    T_min = min(T.T_module_C, [], "omitnan");
+    T_max = max(T.T_module_C, [], "omitnan");
+    T_range = T_max - T_min;
+
+    if T_range <= 0
+        error("Temperature range is zero or invalid.");
+    end
+
+    T.x_T = (T.T_module_C - T_min) ./ T_range;
+
+    % Store normalization constants in the CSV for reproducibility
+    T.T_min_C = repmat(T_min, height(T), 1);
+    T.T_max_C = repmat(T_max, height(T), 1);
+    T.T_range_C = repmat(T_range, height(T), 1);
+
+    fprintf("T_min = %.2f degC\n", T_min);
+    fprintf("T_max = %.2f degC\n", T_max);
+    fprintf("T_range = %.2f degC\n", T_range);
+    fprintf("x_T min = %.4f\n", min(T.x_T));
+    fprintf("x_T max = %.4f\n", max(T.x_T));
 
     T.z_wind = (T.wind_ms - mean(T.wind_ms, "omitnan")) ./ ...
                 std(T.wind_ms, "omitnan");
@@ -260,29 +294,14 @@ function T = addPrAndPredictors(T, P_rated_kW, G_STC)
     T.z_Tamb = (T.T_amb_C - mean(T.T_amb_C, "omitnan")) ./ ...
                 std(T.T_amb_C, "omitnan");
 
-    T.power_ratio = T.PR;
-
-end
-
-function modelData = makeModelDataset(T)
-
-    % Keep only rows usable by the Bayesian model.
-    % This is not arbitrary filtering; log(PR) mathematically requires PR > 0.
-    modelRows = ...
-        isfinite(T.logPR) & ...
-        isfinite(T.PR) & ...
-        T.PR > 0 & ...
-        isfinite(T.x_T) & ...
-        isfinite(T.T_module_C);
-
-    T = T(modelRows, :);
-
     % Recompute day_id so Stan gets consecutive integers: 1, 2, ..., J
     [~, ~, T.day_id] = unique(T.day);
 
     modelData = T(:, ["timestamp", "day", "day_id", ...
                       "month", "hour", ...
-                      "logPR", "PR", "x_T", "z_wind", "z_Tamb", ...
+                      "logPR", "PR", "x_T", ...
+                      "T_min_C", "T_max_C", "T_range_C", ...
+                      "z_wind", "z_Tamb", ...
                       "T_module_C", "T_amb_C", "wind_ms", ...
                       "G_POA_Wm2", "P_DC_kW", ...
                       "expected_P_DC_kW", "power_ratio"]);
