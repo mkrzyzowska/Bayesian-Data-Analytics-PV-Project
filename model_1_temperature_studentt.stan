@@ -30,18 +30,16 @@ transformed parameters {
 model {
   // Baseline log(PR) at the lowest module temperature in the dataset.
   // Broad weakly informative prior.
-  alpha ~ normal(log(0.95), 0.25);
+  alpha ~ normal(log(0.8), 0.3);
 
   // Temperature effect per +10 degC.
   // Weakly informative and centered at zero.
   // This avoids forcing the expected negative PV temperature effect.
-  beta_T_10C ~ normal(0, 0.10);
+  beta_T_10C ~ normal(-0.035, 0.05);
 
-  // Residual noise on log(PR).
-  sigma ~ normal(0, 0.08);
+  sigma ~ normal(0, 1); // Residual noise on log(PR).
 
-  // Student-t degrees of freedom.
-  nu ~ normal(15, 10);
+  nu ~ normal(15, 10); // Student-t degrees of freedom.
 
   y ~ student_t(nu, mu, sigma);
 }

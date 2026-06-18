@@ -21,13 +21,13 @@ generated quantities {
   vector[N] y_prior;
   vector[N] PR_prior;
 
-  alpha = normal_rng(log(0.75), 0.3);
-  beta_T_per_10C = normal_rng(0, 0.5);
+  alpha = normal_rng(log(0.8), 0.3);
+  beta_T_per_10C = normal_rng(-0.035, 0.05);
   beta_T = beta_T_per_10C * temp_range / 10;
 
   // Controlled prior predictive scales. This avoids rare absurd PR values.
-  sigma = uniform_rng(0.005, 0.12);
-  sigma_day = uniform_rng(0.000, 0.08);
+  sigma = uniform_rng(0.005, 1);
+  sigma_day = uniform_rng(0.000, 1);
   nu = uniform_rng(8, 50);
 
   for (j in 1:J) {

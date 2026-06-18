@@ -30,10 +30,10 @@ transformed parameters {
 }
 
 model {
-  alpha ~ normal(log(0.75), 0.3);
-  beta_T_per_10C ~ normal(0, 0.5);
-  sigma ~ normal(0, 0.05);
-  sigma_day ~ normal(0, 0.03);
+  alpha ~ normal(log(0.8), 0.3);
+  beta_T_per_10C ~ normal(-0.035, 0.05);
+  sigma ~ normal(0, 1);
+  sigma_day ~ normal(0, 1);
   nu ~ normal(15, 10);
   z_day_raw ~ normal(0, 1);
 

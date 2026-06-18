@@ -20,16 +20,16 @@ generated quantities {
   vector[N] y_prior;
   vector[N] PR_prior;
 
-  alpha = normal_rng(log(0.95), 0.25);
+  alpha = normal_rng(log(0.8), 0.3);
 
   // Prior directly interpretable as effect per +10 degC
-  beta_T_10C = normal_rng(0, 0.1);
+  beta_T_10C = normal_rng(-0.035, 0.05);
 
   // Convert to coefficient for x_T in [0, 1]
   beta_T_norm = beta_T_10C * T_range_C / 10.0;
 
   // Prior predictive version of bounded sigma
-  sigma = normal_rng(0, 0.08);
+  sigma = normal_rng(0, 1);
   while (sigma <= 0.001 || sigma >= 0.15) {
     sigma = normal_rng(0, 0.08);
   }
