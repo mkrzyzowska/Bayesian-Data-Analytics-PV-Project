@@ -12,17 +12,19 @@ parameters {
   // effect on log(PR) for +10 degC module temperature increase
   real beta_T_10C;
 
-  real<lower=0.001, upper=0.15> sigma;
-  real<lower=5, upper=50> nu;
+  real<lower=0.001, upper=0.4> sigma;
+  real<lower=0, upper=45> nu_min5;
 }
 
 transformed parameters {
   real beta_T_norm;
+  real<lower=5, upper=50> nu;
   vector[N] mu;
 
   // Convert +10 degC coefficient to coefficient for x_T in [0, 1]
   // If x_T changes from 0 to 1, temperature changes by T_range_C.
   beta_T_norm = beta_T_10C * T_range_C / 10.0;
+  nu = 5 + nu_min5;
 
   mu = alpha + beta_T_norm * x_T;
 }
@@ -31,15 +33,9 @@ model {
   // Baseline log(PR) at the lowest module temperature in the dataset.
   // Broad weakly informative prior.
   alpha ~ normal(log(0.8), 0.3);
-
-  // Temperature effect per +10 degC.
-  // Weakly informative and centered at zero.
-  // This avoids forcing the expected negative PV temperature effect.
   beta_T_10C ~ normal(-0.035, 0.05);
-
-  sigma ~ normal(0, 1); // Residual noise on log(PR).
-
-  nu ~ normal(15, 10); // Student-t degrees of freedom.
+  sigma ~ exponential(10);
+  nu_min5 ~ exponential(1);
 
   y ~ student_t(nu, mu, sigma);
 }

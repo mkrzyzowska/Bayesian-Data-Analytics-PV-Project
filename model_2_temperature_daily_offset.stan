@@ -10,18 +10,20 @@ data {
 parameters {
   real alpha;
   real beta_T_per_10C;
-  real<lower=0.001, upper=0.15> sigma;
-  real<lower=0.000, upper=0.10> sigma_day;
-  real<lower=5, upper=50> nu;
+  real<lower=0.001, upper=0.4> sigma;
+  real<lower=0> sigma_day;
+  real<lower=0, upper=45> nu_min5;
   vector[J] z_day_raw;
 }
 
 transformed parameters {
   real beta_T;
+  real<lower=5, upper=50> nu;
   vector[J] delta_day;
   vector[N] mu;
 
   beta_T = beta_T_per_10C * temp_range / 10;
+  nu = 5 + nu_min5;
   delta_day = sigma_day * (z_day_raw - mean(z_day_raw));
 
   for (i in 1:N) {
@@ -32,9 +34,9 @@ transformed parameters {
 model {
   alpha ~ normal(log(0.8), 0.3);
   beta_T_per_10C ~ normal(-0.035, 0.05);
-  sigma ~ normal(0, 1);
+  sigma ~ exponential(10);
+  nu_min5 ~ exponential(1);
   sigma_day ~ normal(0, 1);
-  nu ~ normal(15, 10);
   z_day_raw ~ normal(0, 1);
 
   y ~ student_t(nu, mu, sigma);

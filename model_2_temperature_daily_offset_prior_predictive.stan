@@ -11,6 +11,7 @@ generated quantities {
   real beta_T;
   real sigma;
   real sigma_day;
+  real nu_min5;
   real nu;
   real beta_T_per_10C;
 
@@ -25,10 +26,21 @@ generated quantities {
   beta_T_per_10C = normal_rng(-0.035, 0.05);
   beta_T = beta_T_per_10C * temp_range / 10;
 
-  // Controlled prior predictive scales. This avoids rare absurd PR values.
-  sigma = uniform_rng(0.005, 1);
-  sigma_day = uniform_rng(0.000, 1);
-  nu = uniform_rng(8, 50);
+  sigma = exponential_rng(10);
+  while (sigma <= 0.001 || sigma >= 0.4) {
+    sigma = exponential_rng(10);
+  }
+
+  nu_min5 = exponential_rng(1);
+  while (nu_min5 <= 0 || nu_min5 >= 45) {
+    nu_min5 = exponential_rng(1);
+  }
+  nu = 5 + nu_min5;
+
+  sigma_day = normal_rng(0, 1);
+  while (sigma_day <= 0) {
+    sigma_day = normal_rng(0, 1);
+  }
 
   for (j in 1:J) {
     z_day_raw[j] = normal_rng(0, 1);

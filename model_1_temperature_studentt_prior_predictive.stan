@@ -10,6 +10,7 @@ generated quantities {
   real beta_T_norm;
 
   real sigma;
+  real nu_min5;
   real nu;
 
   real effect_10C_pct;
@@ -22,23 +23,21 @@ generated quantities {
 
   alpha = normal_rng(log(0.8), 0.3);
 
-  // Prior directly interpretable as effect per +10 degC
   beta_T_10C = normal_rng(-0.035, 0.05);
 
   // Convert to coefficient for x_T in [0, 1]
   beta_T_norm = beta_T_10C * T_range_C / 10.0;
 
-  // Prior predictive version of bounded sigma
-  sigma = normal_rng(0, 1);
-  while (sigma <= 0.001 || sigma >= 0.15) {
-    sigma = normal_rng(0, 0.08);
+  sigma = exponential_rng(10);
+  while (sigma <= 0.001 || sigma >= 0.4) {
+    sigma = exponential_rng(10);
   }
 
-  // Prior predictive version of bounded nu
-  nu = normal_rng(15, 10);
-  while (nu <= 5 || nu >= 50) {
-    nu = normal_rng(15, 10);
+  nu_min5 = exponential_rng(1);
+  while (nu_min5 <= 0 || nu_min5 >= 45) {
+    nu_min5 = exponential_rng(1);
   }
+  nu = 5 + nu_min5;
 
   effect_10C_pct = 100 * (exp(beta_T_10C) - 1);
   effect_1C_pct = 100 * (exp(beta_T_10C / 10.0) - 1);
