@@ -39,10 +39,6 @@ generated quantities {
   }
   nu = 5 + nu_min5;
 
-  effect_10C_pct = 100 * (exp(beta_T_10C) - 1);
-  effect_1C_pct = 100 * (exp(beta_T_10C / 10.0) - 1);
-  effect_full_range_pct = 100 * (exp(beta_T_norm) - 1);
-
   for (i in 1:N) {
     mu[i] = alpha + beta_T_norm * x_T[i];
 
