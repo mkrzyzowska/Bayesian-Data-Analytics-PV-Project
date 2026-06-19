@@ -10,7 +10,7 @@ data {
 parameters {
   real alpha;
   real beta_T_per_10C;
-  real<lower=0.001, upper=0.4> sigma;
+  real<lower=0.001, upper=1> sigma;
   real<lower=0> sigma_day;
   real<lower=0, upper=45> nu_min5;
   vector[J] z_day_raw;
@@ -35,7 +35,7 @@ model {
   alpha ~ normal(log(0.8), 0.3);
   beta_T_per_10C ~ normal(-0.035, 0.05);
   sigma ~ exponential(10);
-  nu_min5 ~ exponential(1);
+  nu_min5 ~ exponential(0.1);
   sigma_day ~ normal(0, 1);
   z_day_raw ~ normal(0, 1);
 

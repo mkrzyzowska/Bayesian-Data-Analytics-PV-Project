@@ -27,13 +27,13 @@ generated quantities {
   beta_T = beta_T_per_10C * temp_range / 10;
 
   sigma = exponential_rng(10);
-  while (sigma <= 0.001 || sigma >= 0.4) {
+  while (sigma <= 0.001 || sigma >= 1) {
     sigma = exponential_rng(10);
   }
 
-  nu_min5 = exponential_rng(1);
+  nu_min5 = exponential_rng(0.1);
   while (nu_min5 <= 0 || nu_min5 >= 45) {
-    nu_min5 = exponential_rng(1);
+    nu_min5 = exponential_rng(0.1);
   }
   nu = 5 + nu_min5;
 
