@@ -25,6 +25,7 @@ __pycache__/
 *-diagnostic.csv
 *-output.csv
 
+/model_1_temperature_studentt
 /model_1_temperature_studentt_prior_predictive
 /legacy_models/model_1_temperature_studentt
 /model_2_temperature_daily_offset
