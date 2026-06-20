@@ -162,81 +162,47 @@ fprintf("Rows after physical plausibility filtering: %d\n", height(cleanBase));
 
 cleanBase = addPrAndPredictors(cleanBase, P_rated_kW, G_STC);
 
-%% CREATE 4 DATASETS
+%% CREATE FINAL DATASET: 09:00-16:00, 5-minute samples
 
-% Dataset 1: irradiance > 50 W/m^2, all available 1-minute samples
-maskIrr50 = cleanBase.G_POA_Wm2 > minIrradianceForPR;
-data_irr50_all = makeModelDataset(cleanBase(maskIrr50, :));
+% Keep only measurements between 09:00 and 16:00.
+% This avoids low-irradiance sunrise/sunset periods where PR becomes unstable.
+maskDaytime = cleanBase.hour >= 9 & cleanBase.hour <= 16;
 
-% Dataset 2: irradiance > 50 W/m^2, 5-minute samples
+% Keep only 5-minute timestamps: 00, 05, 10, ..., 55
 mask5min = mod(minute(cleanBase.timestamp), sampleEveryMinutes) == 0;
-data_irr50_5min = makeModelDataset(cleanBase(maskIrr50 & mask5min, :));
 
-% Dataset 3: sun-window per day, all available 1-minute samples
-maskSunWindow = makeSunWindowMask( ...
-    cleanBase, ...
-    sunWindowIrradianceThreshold, ...
-    sunWindowMarginMinutes);
+% Final modelling dataset
+data_9_16_5min = makeModelDataset(cleanBase(maskDaytime & mask5min, :));
 
-data_sunwindow_all = makeModelDataset(cleanBase(maskSunWindow, :));
+%% SAVE FINAL DATASET
 
-% Dataset 4: sun-window per day, 5-minute samples
-data_sunwindow_5min = makeModelDataset(cleanBase(maskSunWindow & mask5min, :));
+outFinal = fullfile(baseDir, "ground_model_data_9_16_5min.csv");
 
-%% SAVE DATASETS
+writetable(data_9_16_5min, outFinal);
 
-out1 = fullfile(baseDir, "ground_model_data_irr50_all.csv");
-out2 = fullfile(baseDir, "ground_model_data_irr50_5min.csv");
-% out3 = fullfile(baseDir, "ground_model_data_sunwindow_all.csv");
-% out4 = fullfile(baseDir, "ground_model_data_sunwindow_5min.csv");
-
-writetable(data_irr50_all, out1);
-writetable(data_irr50_5min, out2);
-% writetable(data_sunwindow_all, out3);
-% writetable(data_sunwindow_5min, out4);
-
-fprintf("\nSaved files:\n");
-fprintf("1) %s\n", out1);
-fprintf("2) %s\n", out2);
-% fprintf("3) %s\n", out3);
-% fprintf("4) %s\n", out4);
+fprintf("\nSaved final modelling dataset:\n");
+fprintf("%s\n", outFinal);
 
 %% PRINT SUMMARY
 
-printDatasetSummary("irr50 all", data_irr50_all);
-printDatasetSummary("irr50 5min", data_irr50_5min);
-% printDatasetSummary("sunwindow all", data_sunwindow_all);
-% printDatasetSummary("sunwindow 5min", data_sunwindow_5min);
+printDatasetSummary("09:00-16:00, 5min", data_9_16_5min);
 
 %% QUICK DIAGNOSTIC PLOTS
 
 figure;
-histogram(data_irr50_all.PR, 100);
+histogram(data_9_16_5min.PR, 100);
 xlabel("PR");
 ylabel("Count");
-title("PR distribution: irradiance > 50 W/m^2, all samples");
+title("PR distribution: 09:00-16:00, 5-minute samples");
 grid on;
-
-% figure;
-% histogram(data_sunwindow_all.PR, 100);
-% xlabel("PR");
-% ylabel("Count");
-% title("PR distribution: sun-window, all samples");
-% grid on;
 
 figure;
-scatter(data_irr50_all.T_module_C, data_irr50_all.PR, 8, "filled");
+scatter(data_9_16_5min.T_module_C, data_9_16_5min.PR, 8, "filled");
 xlabel("Module temperature [degC]");
 ylabel("PR");
-title("PR vs module temperature: irradiance > 50 W/m^2");
+title("PR vs module temperature: 09:00-16:00, 5-minute samples");
 grid on;
 
-% figure;
-% scatter(data_sunwindow_all.T_module_C, data_sunwindow_all.PR, 8, "filled");
-% xlabel("Module temperature [degC]");
-% ylabel("PR");
-% title("PR vs module temperature: sun-window");
-% grid on;
 
 %% LOCAL FUNCTIONS
 
